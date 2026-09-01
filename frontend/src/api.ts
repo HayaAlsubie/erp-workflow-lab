@@ -1,3 +1,4 @@
+import { extractErrorMessage } from "./lib/apiErrors";
 import type { Dashboard, Identity, Item, PurchaseRequest } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -7,20 +8,39 @@ async function request<T>(
   identity: Identity,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Role": identity.role,
-      "X-User-Name": identity.name,
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Role": identity.role,
+        "X-User-Name": identity.name,
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error("NETWORK");
+  }
+
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `Request failed (${response.status})`);
+    throw new Error(extractErrorMessage(payload, `Request failed (${response.status})`));
   }
   return response.json() as Promise<T>;
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_URL}/api/health`);
+    if (!response.ok) {
+      return false;
+    }
+    const payload = (await response.json()) as { status?: string };
+    return payload.status === "ok";
+  } catch {
+    return false;
+  }
 }
 
 export function loadWorkspace(identity: Identity) {
